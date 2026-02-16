@@ -12,6 +12,9 @@ from collections import Counter
 import numpy as np
 from PIL import Image
 import argparse
+import base64
+from datetime import datetime
+import json
 
 class SteganalysisToolError(Exception):
     """Steganaliz araç hatası"""
@@ -441,6 +444,650 @@ class SteganalysisTool:
         else:
             print("✅ SONUÇ: Belirgin bir steganografi tespit edilemedi.")
         print(f"{'='*70}\n")
+    
+    def generate_html_report(self, output_path='report.html'):
+        """Detaylı HTML raporu oluştur"""
+        
+        # Görüntüyü base64'e çevir
+        with open(self.filepath, 'rb') as f:
+            image_data = base64.b64encode(f.read()).decode('utf-8')
+        
+        # Analiz zamanı
+        analysis_time = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+        
+        # Risk skoru hesapla (0-100)
+        risk_score = 0
+        if self.results['chi_square_test']:
+            if self.results['chi_square_test'] > 200:
+                risk_score += 40
+            elif self.results['chi_square_test'] > 100:
+                risk_score += 20
+        
+        risk_score += len(self.results['suspicious_findings']) * 10
+        risk_score += len(self.results['extracted_data']) * 15
+        risk_score = min(100, risk_score)
+        
+        # Risk seviyesi ve rengi
+        if risk_score >= 70:
+            risk_level = "YÜKSEK RİSK"
+            risk_color = "#ef4444"
+            risk_bg = "#fef2f2"
+        elif risk_score >= 40:
+            risk_level = "ORTA RİSK"
+            risk_color = "#f59e0b"
+            risk_bg = "#fffbeb"
+        else:
+            risk_level = "DÜŞÜK RİSK"
+            risk_color = "#10b981"
+            risk_bg = "#f0fdf4"
+        
+        # LSB grafiği için veri hazırla
+        lsb_chart_data = []
+        for channel, stats in self.results['lsb_analysis'].items():
+            lsb_chart_data.append({
+                'channel': channel,
+                'ones': stats['ones'],
+                'zeros': stats['zeros'],
+                'ratio': stats['ratio']
+            })
+        
+        html_content = f"""<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steganografi Analiz Raporu - {self.results['filename']}</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;600;700&display=swap');
+        
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        :root {{
+            --primary: #0f172a;
+            --secondary: #1e293b;
+            --accent: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --border: #334155;
+            --card-bg: #1e293b;
+            --gradient-start: #0f172a;
+            --gradient-end: #1e293b;
+        }}
+        
+        body {{
+            font-family: 'Space Grotesk', sans-serif;
+            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            position: relative;
+        }}
+        
+        body::before {{
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }}
+        
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 1;
+        }}
+        
+        .header {{
+            text-align: center;
+            margin-bottom: 50px;
+            padding: 40px;
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }}
+        
+        .header::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent), #8b5cf6, var(--accent));
+            background-size: 200% 100%;
+            animation: shimmer 3s linear infinite;
+        }}
+        
+        @keyframes shimmer {{
+            0% {{ background-position: -200% 0; }}
+            100% {{ background-position: 200% 0; }}
+        }}
+        
+        .header h1 {{
+            font-size: 3em;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }}
+        
+        .header .subtitle {{
+            font-size: 1.2em;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        
+        .risk-banner {{
+            background: {risk_bg};
+            border: 2px solid {risk_color};
+            border-radius: 15px;
+            padding: 30px;
+            margin: 30px 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }}
+        
+        .risk-banner::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            animation: scan 2s ease-in-out infinite;
+        }}
+        
+        @keyframes scan {{
+            0% {{ left: -100%; }}
+            100% {{ left: 100%; }}
+        }}
+        
+        .risk-score {{
+            font-size: 4em;
+            font-weight: 700;
+            color: {risk_color};
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        
+        .risk-level {{
+            font-size: 1.5em;
+            font-weight: 600;
+            color: {risk_color};
+            margin-top: 10px;
+        }}
+        
+        .grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin: 30px 0;
+        }}
+        
+        .card {{
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            border: 1px solid var(--border);
+            transition: all 0.3s ease;
+        }}
+        
+        .card:hover {{
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            border-color: var(--accent);
+        }}
+        
+        .card h2 {{
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+        }}
+        
+        .card h2 .icon {{
+            font-size: 1.3em;
+        }}
+        
+        .info-item {{
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }}
+        
+        .info-item:last-child {{
+            border-bottom: none;
+        }}
+        
+        .info-label {{
+            color: var(--text-secondary);
+            font-weight: 500;
+        }}
+        
+        .info-value {{
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+        }}
+        
+        .image-preview {{
+            width: 100%;
+            border-radius: 10px;
+            margin-top: 15px;
+            border: 2px solid var(--border);
+            transition: all 0.3s ease;
+        }}
+        
+        .image-preview:hover {{
+            transform: scale(1.02);
+            border-color: var(--accent);
+        }}
+        
+        .chart-container {{
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 10px;
+        }}
+        
+        .bar {{
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+        }}
+        
+        .bar-label {{
+            width: 100px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        
+        .bar-container {{
+            flex: 1;
+            height: 30px;
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }}
+        
+        .bar-fill {{
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 0.9em;
+            transition: width 1s ease;
+        }}
+        
+        .finding-item {{
+            background: rgba(15, 23, 42, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid var(--warning);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95em;
+        }}
+        
+        .finding-item.critical {{
+            border-left-color: var(--danger);
+        }}
+        
+        .finding-item.success {{
+            border-left-color: var(--success);
+        }}
+        
+        .data-extract {{
+            background: rgba(15, 23, 42, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border: 1px solid var(--border);
+        }}
+        
+        .data-extract h3 {{
+            color: var(--accent);
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }}
+        
+        .data-extract pre {{
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9em;
+            line-height: 1.5;
+            color: #94a3b8;
+        }}
+        
+        .metadata-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }}
+        
+        .metadata-item {{
+            background: rgba(15, 23, 42, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }}
+        
+        .metadata-item strong {{
+            display: block;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }}
+        
+        .metadata-item span {{
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+        }}
+        
+        .footer {{
+            text-align: center;
+            margin-top: 50px;
+            padding: 30px;
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }}
+        
+        .badge {{
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        
+        .badge-success {{
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }}
+        
+        .badge-warning {{
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+            border: 1px solid var(--warning);
+        }}
+        
+        .badge-danger {{
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }}
+        
+        @media print {{
+            body {{
+                background: white;
+                color: black;
+            }}
+            .card {{
+                break-inside: avoid;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Steganografi Analiz Raporu</h1>
+            <div class="subtitle">Gelişmiş Steganaliz ve Gizli Veri Tespiti</div>
+        </div>
+        
+        <div class="risk-banner">
+            <div class="risk-score">{risk_score}</div>
+            <div class="risk-level">{risk_level}</div>
+            <p style="margin-top: 15px; color: {risk_color}; font-weight: 600;">
+                {'Bu dosyada steganografi belirtileri tespit edildi!' if risk_score >= 40 else 'Dosya temiz görünüyor.'}
+            </p>
+        </div>
+        
+        <div class="grid">
+            <div class="card">
+                <h2><span class="icon">📄</span> Dosya Bilgileri</h2>
+                <div class="info-item">
+                    <span class="info-label">Dosya Adı</span>
+                    <span class="info-value">{self.results['filename']}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Dosya Türü</span>
+                    <span class="info-value">{self.results['file_type']}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Boyut</span>
+                    <span class="info-value">{self.results['file_size']:,} bytes</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Boyutlar</span>
+                    <span class="info-value">{self.results['metadata'].get('Size', 'N/A')}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Format</span>
+                    <span class="info-value">{self.results['metadata'].get('Format', 'N/A')}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Mod</span>
+                    <span class="info-value">{self.results['metadata'].get('Mode', 'N/A')}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Analiz Zamanı</span>
+                    <span class="info-value">{analysis_time}</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2><span class="icon">🖼️</span> Görüntü Önizleme</h2>
+                <img src="data:image/png;base64,{image_data}" alt="Analiz edilen görüntü" class="image-preview">
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2><span class="icon">📊</span> LSB (Least Significant Bit) Analizi</h2>
+            <div class="chart-container">
+"""
+        
+        # LSB grafikleri
+        for channel_data in lsb_chart_data:
+            ratio_percent = channel_data['ratio'] * 100
+            html_content += f"""
+                <div class="bar">
+                    <div class="bar-label">{channel_data['channel']}</div>
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: {ratio_percent}%">{ratio_percent:.1f}%</div>
+                    </div>
+                </div>
+"""
+        
+        html_content += """
+            </div>
+            <p style="color: var(--text-secondary); margin-top: 15px;">
+                <strong>Not:</strong> Normal bir görüntüde 1'lerin oranı ~%50 olmalıdır. 
+                %45-55 aralığının dışındaki değerler şüpheli olabilir.
+            </p>
+        </div>
+        
+"""
+        
+        # Chi-Square testi
+        if self.results['chi_square_test'] is not None:
+            chi_value = self.results['chi_square_test']
+            if chi_value > 200:
+                chi_badge = '<span class="badge badge-danger">YÜKSEK RİSK</span>'
+                chi_desc = "Steganografi olasılığı çok yüksek!"
+            elif chi_value > 100:
+                chi_badge = '<span class="badge badge-warning">ORTA RİSK</span>'
+                chi_desc = "Steganografi olabilir, detaylı inceleme önerilir."
+            else:
+                chi_badge = '<span class="badge badge-success">DÜŞÜK RİSK</span>'
+                chi_desc = "Normal dağılım görünüyor."
+            
+            html_content += f"""
+        <div class="card">
+            <h2><span class="icon">📈</span> Chi-Square İstatistiksel Test</h2>
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 3em; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--accent);">
+                    {chi_value:.2f}
+                </div>
+                <div style="margin: 15px 0;">
+                    {chi_badge}
+                </div>
+                <p style="color: var(--text-secondary);">{chi_desc}</p>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.5); padding: 15px; border-radius: 8px; margin-top: 20px;">
+                <strong>Chi-Square Değerlendirme Ölçeği:</strong>
+                <ul style="margin-top: 10px; color: var(--text-secondary); line-height: 2;">
+                    <li>&lt; 100: Düşük risk (Normal)</li>
+                    <li>100-200: Orta risk (İncelenmeli)</li>
+                    <li>&gt; 200: Yüksek risk (Muhtemelen steganografi)</li>
+                </ul>
+            </div>
+        </div>
+"""
+        
+        # Şüpheli bulgular
+        if self.results['suspicious_findings']:
+            html_content += f"""
+        <div class="card">
+            <h2><span class="icon">⚠️</span> Şüpheli Bulgular ({len(self.results['suspicious_findings'])})</h2>
+"""
+            for finding in self.results['suspicious_findings']:
+                # Bulgu tipine göre class belirle
+                if '✅' in finding:
+                    finding_class = 'success'
+                elif 'YÜKSEK' in finding or 'tespit edildi' in finding:
+                    finding_class = 'critical'
+                else:
+                    finding_class = ''
+                    
+                html_content += f'            <div class="finding-item {finding_class}">{finding}</div>\n'
+            
+            html_content += """
+        </div>
+"""
+        
+        # Çıkarılan veriler
+        if self.results['extracted_data']:
+            html_content += f"""
+        <div class="card">
+            <h2><span class="icon">✅</span> Çıkarılan Veriler ({len(self.results['extracted_data'])})</h2>
+"""
+            for idx, data in enumerate(self.results['extracted_data'], 1):
+                data_content = data['data']
+                if isinstance(data_content, str):
+                    # HTML escape
+                    data_content = data_content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    if len(data_content) > 1000:
+                        data_content = data_content[:1000] + '...\n\n[Kalan içerik kesiliyor...]'
+                
+                html_content += f"""
+            <div class="data-extract">
+                <h3>[{idx}] {data['type']}</h3>
+                <p><strong>Uzunluk:</strong> {data['length']} bytes</p>
+                <pre>{data_content}</pre>
+            </div>
+"""
+            
+            html_content += """
+        </div>
+"""
+        
+        # Metadata
+        html_content += """
+        <div class="card">
+            <h2><span class="icon">📝</span> Metadata Bilgileri</h2>
+            <div class="metadata-grid">
+"""
+        
+        for key, value in self.results['metadata'].items():
+            if key not in ['Size', 'Format', 'Mode', 'PNG_Chunks']:  # Zaten gösterildi
+                html_content += f"""
+                <div class="metadata-item">
+                    <strong>{key}</strong>
+                    <span>{str(value)[:100]}</span>
+                </div>
+"""
+        
+        html_content += """
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p><strong>Steganografi Analiz Aracı</strong></p>
+            <p>Bu rapor otomatik olarak oluşturulmuştur • """ + analysis_time + """</p>
+            <p style="margin-top: 10px; font-size: 0.85em;">
+                ⚠️ Yasal Uyarı: Bu araç yalnızca eğitim ve güvenlik araştırması amaçlı kullanılmalıdır.
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        // Sayfa yüklendiğinde animasyonları başlat
+        window.addEventListener('load', function() {
+            // Bar animasyonları
+            const bars = document.querySelectorAll('.bar-fill');
+            bars.forEach(bar => {
+                const width = bar.style.width;
+                bar.style.width = '0%';
+                setTimeout(() => {
+                    bar.style.width = width;
+                }, 100);
+            });
+        });
+        
+        // Yazdırma fonksiyonu
+        function printReport() {
+            window.print();
+        }
+    </script>
+</body>
+</html>"""
+        
+        # HTML dosyasını kaydet
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        print(f"\n✅ HTML raporu oluşturuldu: {output_path}")
+        return output_path
 
 
 def main():
@@ -452,9 +1099,12 @@ def main():
   %(prog)s image.png
   %(prog)s photo.bmp
   %(prog)s suspicious_image.png
+  %(prog)s image.png --html report.html
         """
     )
     parser.add_argument('filepath', help='Analiz edilecek görüntü dosyası')
+    parser.add_argument('--html', '--report', metavar='OUTPUT', 
+                       help='HTML raporu oluştur (örn: --html report.html)')
     
     args = parser.parse_args()
     
@@ -465,6 +1115,13 @@ def main():
     try:
         tool = SteganalysisTool(args.filepath)
         tool.analyze()
+        
+        # HTML raporu oluştur
+        if args.html:
+            html_path = args.html
+            tool.generate_html_report(html_path)
+            print(f"\n📊 HTML raporu görüntülemek için: {html_path}")
+            
     except SteganalysisToolError as e:
         print(f"❌ Hata: {e}")
         sys.exit(1)
