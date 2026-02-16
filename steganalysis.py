@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Steganografi Analiz Aracı
-PNG ve BMP dosyalarında gizlenmiş verileri tespit eder
+Gelişmiş Steganografi Analiz Aracı
+PNG, BMP ve JPEG dosyalarında çoklu yöntemle gizli veri tespiti
 """
 
 import sys
@@ -15,30 +15,40 @@ import argparse
 import base64
 from datetime import datetime
 import json
+import glob
+from pathlib import Path
 
-class SteganalysisToolError(Exception):
-    """Steganaliz araç hatası"""
+class AdvancedSteganalysisError(Exception):
+    """Gelişmiş Steganaliz araç hatası"""
     pass
 
-class SteganalysisTool:
-    def __init__(self, filepath):
+class AdvancedSteganalysisTool:
+    def __init__(self, filepath, methods=None):
         self.filepath = filepath
         self.filename = os.path.basename(filepath)
+        self.methods = methods or ['all']
         self.results = {
             'filename': self.filename,
             'file_type': None,
             'file_size': os.path.getsize(filepath),
+            'analysis_methods': self.methods,
             'suspicious_findings': [],
             'extracted_data': [],
             'lsb_analysis': {},
+            'dct_analysis': {},
+            'histogram_analysis': {},
+            'rs_analysis': {},
+            'sample_pair_analysis': {},
+            'entropy_analysis': {},
+            'ml_prediction': {},
             'metadata': {},
             'chi_square_test': None
         }
         
     def analyze(self):
-        """Ana analiz fonksiyonu"""
+        """Ana analiz fonksiyonu - seçilen yöntemleri uygula"""
         print(f"\n{'='*70}")
-        print(f"Steganografi Analizi: {self.filename}")
+        print(f"🔍 Gelişmiş Steganografi Analizi: {self.filename}")
         print(f"{'='*70}\n")
         
         # Dosya türünü belirle
@@ -49,15 +59,48 @@ class SteganalysisTool:
             self.image = Image.open(self.filepath)
             self.image_array = np.array(self.image)
         except Exception as e:
-            raise SteganalysisToolError(f"Görüntü yüklenemedi: {e}")
+            raise AdvancedSteganalysisError(f"Görüntü yüklenemedi: {e}")
         
-        # Analizler
-        self._analyze_lsb()
+        # Temel metadata
         self._analyze_metadata()
-        self._chi_square_test()
-        self._extract_lsb_data()
-        self._check_unusual_patterns()
+        
+        # Seçilen analizleri yap
+        if 'all' in self.methods or 'lsb' in self.methods:
+            print("📊 LSB Analizi...")
+            self._analyze_lsb()
+            self._chi_square_test()
+            self._extract_lsb_data()
+        
+        if 'all' in self.methods or 'dct' in self.methods:
+            if self.results['file_type'] == 'JPEG':
+                print("📈 DCT Analizi...")
+                self._analyze_dct()
+            else:
+                print("⚠️  DCT analizi sadece JPEG dosyaları için geçerli")
+        
+        if 'all' in self.methods or 'histogram' in self.methods:
+            print("📊 Histogram Analizi...")
+            self._analyze_histogram()
+        
+        if 'all' in self.methods or 'rs' in self.methods:
+            print("🔬 RS Analizi...")
+            self._analyze_rs()
+        
+        if 'all' in self.methods or 'sample_pair' in self.methods:
+            print("👥 Sample Pair Analizi...")
+            self._analyze_sample_pair()
+        
+        if 'all' in self.methods or 'entropy' in self.methods:
+            print("🌡️  Entropi Analizi...")
+            self._analyze_entropy()
+        
+        if 'all' in self.methods or 'ml' in self.methods:
+            print("🤖 Machine Learning Tespiti...")
+            self._ml_based_detection()
+        
+        # Dosya yapısı (tüm analizlerde)
         self._analyze_file_structure()
+        self._check_unusual_patterns()
         
         # Sonuçları göster
         self._display_results()
@@ -67,14 +110,14 @@ class SteganalysisTool:
     def _detect_file_type(self):
         """Dosya türünü belirle"""
         with open(self.filepath, 'rb') as f:
-            header = f.read(8)
+            header = f.read(10)
         
-        # PNG imzası
         if header[:8] == b'\x89PNG\r\n\x1a\n':
             self.results['file_type'] = 'PNG'
-        # BMP imzası
         elif header[:2] == b'BM':
             self.results['file_type'] = 'BMP'
+        elif header[:3] == b'\xff\xd8\xff':
+            self.results['file_type'] = 'JPEG'
         else:
             self.results['file_type'] = 'UNKNOWN'
             self.results['suspicious_findings'].append(
@@ -83,10 +126,7 @@ class SteganalysisTool:
     
     def _analyze_lsb(self):
         """LSB (Least Significant Bit) analizi"""
-        print("📊 LSB Analizi yapılıyor...")
-        
-        # Her kanal için LSB dağılımını analiz et
-        if len(self.image_array.shape) == 3:  # Renkli görüntü
+        if len(self.image_array.shape) == 3:
             channels = ['Red', 'Green', 'Blue']
             if self.image_array.shape[2] == 4:
                 channels.append('Alpha')
@@ -95,7 +135,6 @@ class SteganalysisTool:
                 channel = self.image_array[:, :, idx]
                 lsb_bits = channel & 1
                 
-                # LSB dağılımı
                 ones = np.sum(lsb_bits)
                 zeros = lsb_bits.size - ones
                 ratio = ones / lsb_bits.size if lsb_bits.size > 0 else 0
@@ -107,12 +146,11 @@ class SteganalysisTool:
                     'total_bits': int(lsb_bits.size)
                 }
                 
-                # Normal bir görüntüde LSB oranı ~0.5 olmalı
                 if abs(ratio - 0.5) > 0.05:
                     self.results['suspicious_findings'].append(
                         f"⚠️  {channel_name} kanalında anormal LSB dağılımı (Oran: {ratio:.3f})"
                     )
-        else:  # Gri tonlamalı
+        else:
             lsb_bits = self.image_array & 1
             ones = np.sum(lsb_bits)
             zeros = lsb_bits.size - ones
@@ -131,22 +169,17 @@ class SteganalysisTool:
                 )
     
     def _chi_square_test(self):
-        """Chi-Square testi ile steganografi tespiti"""
-        print("📈 Chi-Square testi yapılıyor...")
-        
-        # İlk kanalı kullan
+        """Chi-Square testi"""
         if len(self.image_array.shape) == 3:
             data = self.image_array[:, :, 0].flatten()
         else:
             data = self.image_array.flatten()
         
-        # Çift ve tek değerlerin frekansını say
         pairs = {}
         for i in range(0, 256, 2):
             pairs[i] = np.sum(data == i)
             pairs[i+1] = np.sum(data == i+1)
         
-        # Chi-square değerini hesapla
         chi_square = 0
         for i in range(0, 256, 2):
             expected = (pairs[i] + pairs[i+1]) / 2
@@ -156,27 +189,397 @@ class SteganalysisTool:
         
         self.results['chi_square_test'] = float(chi_square)
         
-        # Yüksek chi-square değeri steganografi göstergesi
         if chi_square > 200:
             self.results['suspicious_findings'].append(
-                f"⚠️  Yüksek Chi-Square değeri tespit edildi: {chi_square:.2f} (Muhtemel steganografi)"
+                f"⚠️  Yüksek Chi-Square değeri: {chi_square:.2f} (Muhtemel steganografi)"
             )
     
-    def _extract_lsb_data(self):
-        """LSB'lerden veri çıkarmayı dene"""
-        print("🔍 LSB verisi çıkarılıyor...")
-        
-        # Tüm LSB bitlerini topla
+    def _analyze_dct(self):
+        """DCT (Discrete Cosine Transform) analizi - JPEG için"""
+        try:
+            # JPEG DCT katsayılarını analiz et
+            if self.results['file_type'] != 'JPEG':
+                return
+            
+            # Piksel değerlerinden DCT tahmini yap
+            if len(self.image_array.shape) == 3:
+                gray = np.mean(self.image_array, axis=2).astype(np.float32)
+            else:
+                gray = self.image_array.astype(np.float32)
+            
+            # 8x8 bloklar halinde DCT analizi
+            h, w = gray.shape
+            h_blocks = h // 8
+            w_blocks = w // 8
+            
+            dct_coeffs = []
+            for i in range(h_blocks):
+                for j in range(w_blocks):
+                    block = gray[i*8:(i+1)*8, j*8:(j+1)*8]
+                    # Basit DCT tahmini için varyans kullan
+                    variance = np.var(block)
+                    dct_coeffs.append(variance)
+            
+            dct_coeffs = np.array(dct_coeffs)
+            
+            self.results['dct_analysis'] = {
+                'mean_variance': float(np.mean(dct_coeffs)),
+                'std_variance': float(np.std(dct_coeffs)),
+                'total_blocks': len(dct_coeffs),
+                'suspicious_blocks': int(np.sum(dct_coeffs < 1.0))  # Çok düşük varyans
+            }
+            
+            # Düşük varyans = muhtemel steganografi
+            suspicious_ratio = self.results['dct_analysis']['suspicious_blocks'] / len(dct_coeffs)
+            if suspicious_ratio > 0.1:
+                self.results['suspicious_findings'].append(
+                    f"⚠️  DCT: %{suspicious_ratio*100:.1f} blokta düşük varyans (Muhtemel JPEG steganografi)"
+                )
+                
+        except Exception as e:
+            self.results['dct_analysis'] = {'error': str(e)}
+    
+    def _analyze_histogram(self):
+        """Histogram analizi"""
         if len(self.image_array.shape) == 3:
-            # RGB kanallarını sırayla kullan
+            channels_data = [self.image_array[:, :, i] for i in range(self.image_array.shape[2])]
+            channel_names = ['Red', 'Green', 'Blue', 'Alpha'][:self.image_array.shape[2]]
+        else:
+            channels_data = [self.image_array]
+            channel_names = ['Grayscale']
+        
+        for channel_data, channel_name in zip(channels_data, channel_names):
+            hist, bins = np.histogram(channel_data.flatten(), bins=256, range=(0, 256))
+            
+            # Histogram anomalileri tespit et
+            # 1. Boş binler
+            empty_bins = np.sum(hist == 0)
+            
+            # 2. Histogram düzgünlüğü (smoothness)
+            hist_diff = np.abs(np.diff(hist))
+            smoothness = np.mean(hist_diff)
+            
+            # 3. Spike tespiti
+            threshold = np.mean(hist) + 3 * np.std(hist)
+            spikes = np.sum(hist > threshold)
+            
+            self.results['histogram_analysis'][channel_name] = {
+                'empty_bins': int(empty_bins),
+                'smoothness': float(smoothness),
+                'spikes': int(spikes),
+                'mean_frequency': float(np.mean(hist)),
+                'std_frequency': float(np.std(hist))
+            }
+            
+            # Anomali kontrolü
+            if empty_bins > 50:
+                self.results['suspicious_findings'].append(
+                    f"⚠️  Histogram: {channel_name} kanalında {empty_bins} boş bin (Veri manipülasyonu olabilir)"
+                )
+            
+            if spikes > 5:
+                self.results['suspicious_findings'].append(
+                    f"⚠️  Histogram: {channel_name} kanalında {spikes} anormal spike"
+                )
+    
+    def _analyze_rs(self):
+        """RS (Regular-Singular) analizi"""
+        try:
+            if len(self.image_array.shape) == 3:
+                data = self.image_array[:, :, 0].flatten()
+            else:
+                data = self.image_array.flatten()
+            
+            # Mask fonksiyonları
+            def flip_lsb(x):
+                return x ^ 1
+            
+            def regular_groups(arr):
+                # Regular: komşu pikseller arasındaki fark değişmez
+                return np.sum(np.abs(np.diff(arr)))
+            
+            # Original
+            original = data[:len(data)//2 * 2].reshape(-1, 2)
+            R_original = 0
+            S_original = 0
+            
+            for group in original:
+                f = regular_groups(group)
+                flipped = flip_lsb(group)
+                f_flipped = regular_groups(flipped)
+                
+                if f > f_flipped:
+                    R_original += 1
+                elif f < f_flipped:
+                    S_original += 1
+            
+            # Negatif mask
+            flipped_data = flip_lsb(data)
+            flipped = flipped_data[:len(flipped_data)//2 * 2].reshape(-1, 2)
+            R_flipped = 0
+            S_flipped = 0
+            
+            for group in flipped:
+                f = regular_groups(group)
+                reflipped = flip_lsb(group)
+                f_reflipped = regular_groups(reflipped)
+                
+                if f > f_reflipped:
+                    R_flipped += 1
+                elif f < f_reflipped:
+                    S_flipped += 1
+            
+            total_groups = len(original)
+            
+            self.results['rs_analysis'] = {
+                'R_original': int(R_original),
+                'S_original': int(S_original),
+                'R_flipped': int(R_flipped),
+                'S_flipped': int(S_flipped),
+                'total_groups': int(total_groups),
+                'R_ratio': float(R_original / total_groups) if total_groups > 0 else 0,
+                'S_ratio': float(S_original / total_groups) if total_groups > 0 else 0
+            }
+            
+            # RS anomali tespiti
+            # Normal görüntülerde R ≈ S olmalı
+            rs_diff = abs(R_original - S_original) / total_groups if total_groups > 0 else 0
+            
+            if rs_diff > 0.05:
+                embedded_ratio = rs_diff  # Tahmini gömülü veri oranı
+                self.results['suspicious_findings'].append(
+                    f"⚠️  RS Analizi: R-S farkı yüksek (Tahmini gömülü veri: %{embedded_ratio*100:.1f})"
+                )
+                
+        except Exception as e:
+            self.results['rs_analysis'] = {'error': str(e)}
+    
+    def _analyze_sample_pair(self):
+        """Sample Pair analizi"""
+        try:
+            if len(self.image_array.shape) == 3:
+                data = self.image_array[:, :, 0].flatten()
+            else:
+                data = self.image_array.flatten()
+            
+            # Komşu piksel çiftlerini analiz et
+            pairs = []
+            for i in range(0, len(data)-1, 2):
+                pairs.append((int(data[i]), int(data[i+1])))
+            
+            # Çift türlerini say
+            X = 0  # u = 2k, v = 2k
+            Y = 0  # u = 2k+1, v = 2k+1
+            Z = 0  # u = 2k, v = 2k+1 or vice versa
+            
+            for u, v in pairs:
+                if u % 2 == 0 and v % 2 == 0:
+                    X += 1
+                elif u % 2 == 1 and v % 2 == 1:
+                    Y += 1
+                else:
+                    Z += 1
+            
+            total = len(pairs)
+            
+            # Tahmini gömülü mesaj uzunluğu
+            # LSB embedding'de X ve Y azalır, Z artar
+            expected_X = total * 0.25
+            expected_Y = total * 0.25
+            expected_Z = total * 0.5
+            
+            deviation_X = abs(X - expected_X) / expected_X if expected_X > 0 else 0
+            deviation_Z = abs(Z - expected_Z) / expected_Z if expected_Z > 0 else 0
+            
+            self.results['sample_pair_analysis'] = {
+                'X_pairs': int(X),
+                'Y_pairs': int(Y),
+                'Z_pairs': int(Z),
+                'total_pairs': int(total),
+                'X_ratio': float(X / total) if total > 0 else 0,
+                'Y_ratio': float(Y / total) if total > 0 else 0,
+                'Z_ratio': float(Z / total) if total > 0 else 0,
+                'deviation_score': float(deviation_X + deviation_Z)
+            }
+            
+            # Anomali kontrolü
+            if deviation_X > 0.15 or deviation_Z > 0.15:
+                self.results['suspicious_findings'].append(
+                    f"⚠️  Sample Pair: Anormal çift dağılımı (Sapma skoru: {deviation_X + deviation_Z:.3f})"
+                )
+                
+        except Exception as e:
+            self.results['sample_pair_analysis'] = {'error': str(e)}
+    
+    def _analyze_entropy(self):
+        """Entropi analizi - Shannon entropisi"""
+        try:
+            if len(self.image_array.shape) == 3:
+                channels_data = [self.image_array[:, :, i] for i in range(self.image_array.shape[2])]
+                channel_names = ['Red', 'Green', 'Blue', 'Alpha'][:self.image_array.shape[2]]
+            else:
+                channels_data = [self.image_array]
+                channel_names = ['Grayscale']
+            
+            for channel_data, channel_name in zip(channels_data, channel_names):
+                flat = channel_data.flatten()
+                
+                # Shannon entropisi
+                hist, _ = np.histogram(flat, bins=256, range=(0, 256))
+                hist = hist[hist > 0]  # Sıfırları kaldır
+                probabilities = hist / len(flat)
+                entropy = -np.sum(probabilities * np.log2(probabilities))
+                
+                # LSB entropisi (sadece LSB bitlerinin entropisi)
+                lsb_bits = flat & 1
+                lsb_hist = np.bincount(lsb_bits, minlength=2)
+                lsb_prob = lsb_hist / len(lsb_bits)
+                lsb_prob = lsb_prob[lsb_prob > 0]
+                lsb_entropy = -np.sum(lsb_prob * np.log2(lsb_prob))
+                
+                # Blok bazlı entropi varyansı
+                h, w = channel_data.shape
+                block_size = 32
+                h_blocks = h // block_size
+                w_blocks = w // block_size
+                
+                block_entropies = []
+                for i in range(h_blocks):
+                    for j in range(w_blocks):
+                        block = channel_data[i*block_size:(i+1)*block_size, 
+                                            j*block_size:(j+1)*block_size].flatten()
+                        b_hist, _ = np.histogram(block, bins=256, range=(0, 256))
+                        b_hist = b_hist[b_hist > 0]
+                        b_prob = b_hist / len(block)
+                        b_entropy = -np.sum(b_prob * np.log2(b_prob))
+                        block_entropies.append(b_entropy)
+                
+                block_entropies = np.array(block_entropies)
+                
+                self.results['entropy_analysis'][channel_name] = {
+                    'shannon_entropy': float(entropy),
+                    'lsb_entropy': float(lsb_entropy),
+                    'mean_block_entropy': float(np.mean(block_entropies)),
+                    'std_block_entropy': float(np.std(block_entropies)),
+                    'max_entropy': 8.0  # 256 değer için maksimum
+                }
+                
+                # Anomali kontrolü
+                # Yüksek entropi = rastgele/şifreli veri
+                if entropy > 7.5:
+                    self.results['suspicious_findings'].append(
+                        f"⚠️  Entropi: {channel_name} kanalında çok yüksek entropi ({entropy:.2f}) - Şifreli veri olabilir"
+                    )
+                
+                # LSB entropisi 1'e yakın = ideal rastgele
+                if lsb_entropy > 0.99:
+                    self.results['suspicious_findings'].append(
+                        f"⚠️  Entropi: {channel_name} LSB entropisi çok yüksek ({lsb_entropy:.3f}) - Steganografi olabilir"
+                    )
+                
+        except Exception as e:
+            self.results['entropy_analysis'] = {'error': str(e)}
+    
+    def _ml_based_detection(self):
+        """Machine Learning tabanlı tespit - Feature-based"""
+        try:
+            # Özellik çıkarımı
+            features = []
+            
+            # 1. LSB özellikleri
+            if self.results['lsb_analysis']:
+                for channel, stats in self.results['lsb_analysis'].items():
+                    features.append(stats['ratio'])
+            
+            # 2. Chi-square
+            if self.results['chi_square_test']:
+                features.append(self.results['chi_square_test'] / 1000)  # Normalize
+            
+            # 3. Histogram özellikleri
+            if self.results['histogram_analysis']:
+                for channel, stats in self.results['histogram_analysis'].items():
+                    features.append(stats['smoothness'] / 100)
+                    features.append(stats['empty_bins'] / 256)
+            
+            # 4. Entropi özellikleri
+            if self.results['entropy_analysis']:
+                for channel, stats in self.results['entropy_analysis'].items():
+                    features.append(stats['shannon_entropy'] / 8)
+                    features.append(stats['lsb_entropy'])
+            
+            # 5. RS özellikleri
+            if self.results['rs_analysis'] and 'error' not in self.results['rs_analysis']:
+                features.append(self.results['rs_analysis']['R_ratio'])
+                features.append(self.results['rs_analysis']['S_ratio'])
+            
+            # 6. Sample Pair özellikleri
+            if self.results['sample_pair_analysis'] and 'error' not in self.results['sample_pair_analysis']:
+                features.append(self.results['sample_pair_analysis']['deviation_score'])
+            
+            # Basit ML skor hesaplama (weighted sum)
+            # Gerçek ML için sklearn kullanılabilir
+            weights = {
+                'lsb_deviation': 15,
+                'chi_square': 20,
+                'histogram_anomaly': 10,
+                'entropy_high': 15,
+                'rs_anomaly': 20,
+                'sample_pair_anomaly': 10,
+                'findings_count': 10
+            }
+            
+            ml_score = 0
+            
+            # LSB sapması
+            if self.results['lsb_analysis']:
+                for stats in self.results['lsb_analysis'].values():
+                    lsb_dev = abs(stats['ratio'] - 0.5)
+                    if lsb_dev > 0.05:
+                        ml_score += weights['lsb_deviation'] * (lsb_dev / 0.5)
+            
+            # Chi-square
+            if self.results['chi_square_test']:
+                if self.results['chi_square_test'] > 100:
+                    ml_score += weights['chi_square']
+            
+            # Bulgular
+            ml_score += len(self.results['suspicious_findings']) * weights['findings_count']
+            
+            # Normalize (0-100)
+            ml_score = min(100, ml_score)
+            
+            # Güven aralığı
+            confidence = "Düşük"
+            if ml_score > 70:
+                confidence = "Yüksek"
+            elif ml_score > 40:
+                confidence = "Orta"
+            
+            self.results['ml_prediction'] = {
+                'score': float(ml_score),
+                'confidence': confidence,
+                'prediction': 'Steganografi Tespit Edildi' if ml_score > 50 else 'Temiz',
+                'features_used': len(features),
+                'risk_level': 'YÜKSEK' if ml_score > 70 else ('ORTA' if ml_score > 40 else 'DÜŞÜK')
+            }
+            
+            if ml_score > 60:
+                self.results['suspicious_findings'].append(
+                    f"🤖 ML Tespiti: Yüksek steganografi skoru ({ml_score:.1f}/100) - {confidence} güven"
+                )
+                
+        except Exception as e:
+            self.results['ml_prediction'] = {'error': str(e)}
+    
+    def _extract_lsb_data(self):
+        """LSB'lerden veri çıkar"""
+        if len(self.image_array.shape) == 3:
             flat_image = self.image_array[:, :, :3].flatten()
         else:
             flat_image = self.image_array.flatten()
         
-        # LSB'leri al
         lsb_bits = (flat_image & 1).astype(np.uint8)
         
-        # Bitleri byte'lara dönüştür
         bytes_data = []
         for i in range(0, len(lsb_bits) - 8, 8):
             byte = 0
@@ -184,7 +587,6 @@ class SteganalysisTool:
                 byte |= (lsb_bits[i + j] << j)
             bytes_data.append(byte)
         
-        # ASCII metnini kontrol et
         text_attempt = self._try_extract_text(bytes_data)
         if text_attempt:
             self.results['extracted_data'].append({
@@ -196,18 +598,17 @@ class SteganalysisTool:
                 f"✅ LSB'lerde ASCII metin bulundu! ({len(text_attempt)} karakter)"
             )
         
-        # Dosya imzalarını kontrol et
         file_signatures = self._check_file_signatures(bytes_data)
         if file_signatures:
             self.results['extracted_data'].extend(file_signatures)
     
     def _try_extract_text(self, bytes_data, min_length=10):
-        """Byte dizisinden ASCII metin çıkarmayı dene"""
+        """Byte dizisinden ASCII metin çıkar"""
         text = ""
         consecutive_printable = 0
         
-        for byte in bytes_data[:10000]:  # İlk 10KB'ı kontrol et
-            if 32 <= byte <= 126 or byte in [9, 10, 13]:  # Yazdırılabilir ASCII
+        for byte in bytes_data[:10000]:
+            if 32 <= byte <= 126 or byte in [9, 10, 13]:
                 text += chr(byte)
                 consecutive_printable += 1
             else:
@@ -221,7 +622,7 @@ class SteganalysisTool:
         return None
     
     def _check_file_signatures(self, bytes_data):
-        """Bilinen dosya imzalarını kontrol et"""
+        """Dosya imzalarını kontrol et"""
         signatures = {
             'PNG': [b'\x89PNG\r\n\x1a\n'],
             'JPEG': [b'\xFF\xD8\xFF'],
@@ -234,7 +635,7 @@ class SteganalysisTool:
         }
         
         found_files = []
-        bytes_array = bytes(bytes_data[:1000])  # İlk 1KB'ı kontrol et
+        bytes_array = bytes(bytes_data[:1000])
         
         for file_type, sigs in signatures.items():
             for sig in sigs:
@@ -252,16 +653,12 @@ class SteganalysisTool:
     
     def _check_unusual_patterns(self):
         """Olağandışı paternleri kontrol et"""
-        print("🔎 Olağandışı paternler aranıyor...")
-        
-        # Piksel değerlerinin standart sapmasını kontrol et
         std_dev = np.std(self.image_array)
         if std_dev < 10:
             self.results['suspicious_findings'].append(
-                f"⚠️  Çok düşük standart sapma: {std_dev:.2f} (Düz renkli alanlar)"
+                f"⚠️  Çok düşük standart sapma: {std_dev:.2f}"
             )
         
-        # Sıralı değerleri kontrol et (sequential patterns)
         flat = self.image_array.flatten()
         sequential_count = 0
         for i in range(len(flat) - 1):
@@ -275,10 +672,7 @@ class SteganalysisTool:
             )
     
     def _analyze_metadata(self):
-        """Görüntü metadata'sını analiz et"""
-        print("📝 Metadata analizi yapılıyor...")
-        
-        # EXIF verisi
+        """Metadata analizi"""
         try:
             from PIL.ExifTags import TAGS
             exif = self.image._getexif()
@@ -289,26 +683,21 @@ class SteganalysisTool:
         except:
             pass
         
-        # Temel bilgiler
         self.results['metadata']['Format'] = self.image.format
         self.results['metadata']['Mode'] = self.image.mode
         self.results['metadata']['Size'] = f"{self.image.size[0]}x{self.image.size[1]}"
         
-        # PNG için özel kontroller
         if self.results['file_type'] == 'PNG':
             self._analyze_png_chunks()
     
     def _analyze_png_chunks(self):
-        """PNG chunk'larını analiz et"""
-        print("📦 PNG chunk'ları analiz ediliyor...")
-        
+        """PNG chunk analizi"""
         with open(self.filepath, 'rb') as f:
-            f.read(8)  # PNG imzasını atla
+            f.read(8)
             
             chunks = []
             while True:
                 try:
-                    # Chunk uzunluğunu oku
                     length_bytes = f.read(4)
                     if len(length_bytes) < 4:
                         break
@@ -318,61 +707,37 @@ class SteganalysisTool:
                     chunk_data = f.read(length)
                     crc = f.read(4)
                     
-                    chunks.append({
-                        'type': chunk_type,
-                        'length': length
-                    })
+                    chunks.append({'type': chunk_type, 'length': length})
                     
-                    # Standart olmayan chunk'ları tespit et
                     standard_chunks = ['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 
                                       'gAMA', 'cHRM', 'sRGB', 'iCCP', 'tEXt', 
                                       'zTXt', 'iTXt', 'bKGD', 'pHYs', 'tIME']
                     
                     if chunk_type not in standard_chunks:
                         self.results['suspicious_findings'].append(
-                            f"⚠️  Standart olmayan PNG chunk bulundu: {chunk_type} ({length} byte)"
+                            f"⚠️  Standart olmayan PNG chunk: {chunk_type} ({length} byte)"
                         )
                         
-                        # tEXt, zTXt, iTXt chunk'larından metin çıkar
-                        if chunk_type in ['tEXt', 'zTXt', 'iTXt']:
-                            try:
-                                if chunk_type == 'tEXt':
-                                    text = chunk_data.split(b'\x00', 1)
-                                    if len(text) == 2:
-                                        keyword, content = text
-                                        self.results['extracted_data'].append({
-                                            'type': f'PNG tEXt chunk: {keyword.decode()}',
-                                            'data': content.decode('latin1'),
-                                            'length': len(content)
-                                        })
-                            except:
-                                pass
-                    
-                except Exception as e:
+                except Exception:
                     break
             
             self.results['metadata']['PNG_Chunks'] = chunks
     
     def _analyze_file_structure(self):
-        """Dosya yapısını analiz et"""
-        print("🏗️  Dosya yapısı analiz ediliyor...")
-        
+        """Dosya yapısı analizi"""
         with open(self.filepath, 'rb') as f:
             file_data = f.read()
         
-        # Dosya sonunda ekstra veri var mı kontrol et
         if self.results['file_type'] == 'PNG':
             iend_pos = file_data.rfind(b'IEND')
             if iend_pos != -1:
-                # IEND'den sonra CRC (4 byte) olmalı
                 expected_end = iend_pos + 4 + 4
                 if len(file_data) > expected_end:
                     extra_bytes = len(file_data) - expected_end
                     self.results['suspicious_findings'].append(
-                        f"⚠️  PNG IEND chunk'ından sonra {extra_bytes} byte ekstra veri bulundu!"
+                        f"⚠️  PNG IEND chunk'ından sonra {extra_bytes} byte ekstra veri!"
                     )
                     
-                    # Bu veriyi çıkarmayı dene
                     extra_data = file_data[expected_end:]
                     text = self._try_extract_text(list(extra_data))
                     if text:
@@ -391,83 +756,77 @@ class SteganalysisTool:
         print(f"📄 Dosya: {self.results['filename']}")
         print(f"📊 Tip: {self.results['file_type']}")
         print(f"💾 Boyut: {self.results['file_size']:,} bytes")
-        print(f"🖼️  Boyutlar: {self.results['metadata'].get('Size', 'N/A')}")
+        print(f"🔬 Uygulanan Yöntemler: {', '.join(self.results['analysis_methods'])}")
         
-        # LSB Analizi
-        print(f"\n{'─'*70}")
-        print("📊 LSB Analiz Sonuçları:")
-        print(f"{'─'*70}")
-        for channel, stats in self.results['lsb_analysis'].items():
-            print(f"\n  {channel} Kanalı:")
-            print(f"    • 1'ler: {stats['ones']:,} ({stats['ratio']:.1%})")
-            print(f"    • 0'lar: {stats['zeros']:,} ({1-stats['ratio']:.1%})")
-            print(f"    • Toplam: {stats['total_bits']:,} bits")
-        
-        # Chi-Square
-        if self.results['chi_square_test'] is not None:
+        # ML Skoru (varsa)
+        if self.results['ml_prediction'] and 'score' in self.results['ml_prediction']:
+            ml = self.results['ml_prediction']
             print(f"\n{'─'*70}")
-            print(f"📈 Chi-Square Test: {self.results['chi_square_test']:.2f}")
-            if self.results['chi_square_test'] > 200:
-                print("    ⚠️  YÜKSEK - Steganografi olasılığı yüksek!")
-            elif self.results['chi_square_test'] > 100:
-                print("    ⚠️  ORTA - Steganografi olabilir")
-            else:
-                print("    ✅ DÜŞÜK - Normal görünüyor")
+            print(f"🤖 MACHINE LEARNING TAHMİNİ")
+            print(f"{'─'*70}")
+            print(f"Skor: {ml['score']:.1f}/100")
+            print(f"Risk Seviyesi: {ml['risk_level']}")
+            print(f"Tahmin: {ml['prediction']}")
+            print(f"Güven: {ml['confidence']}")
         
-        # Şüpheli bulgular
+        # Diğer analizler...
+        if self.results['lsb_analysis']:
+            print(f"\n{'─'*70}")
+            print("📊 LSB Analizi:")
+            for channel, stats in self.results['lsb_analysis'].items():
+                print(f"  {channel}: 1'ler {stats['ratio']:.1%}, Chi²: {self.results.get('chi_square_test', 0):.1f}")
+        
+        if self.results['entropy_analysis']:
+            print(f"\n{'─'*70}")
+            print("🌡️  Entropi Analizi:")
+            for channel, stats in self.results['entropy_analysis'].items():
+                print(f"  {channel}: Shannon={stats['shannon_entropy']:.2f}, LSB={stats['lsb_entropy']:.3f}")
+        
+        if self.results['rs_analysis'] and 'error' not in self.results['rs_analysis']:
+            print(f"\n{'─'*70}")
+            print(f"🔬 RS Analizi: R={self.results['rs_analysis']['R_ratio']:.3f}, S={self.results['rs_analysis']['S_ratio']:.3f}")
+        
         if self.results['suspicious_findings']:
             print(f"\n{'─'*70}")
             print(f"⚠️  ŞÜPHELİ BULGULAR ({len(self.results['suspicious_findings'])}):")
             print(f"{'─'*70}")
-            for finding in self.results['suspicious_findings']:
+            for finding in self.results['suspicious_findings'][:10]:  # İlk 10 bulgu
                 print(f"  {finding}")
+            if len(self.results['suspicious_findings']) > 10:
+                print(f"  ... ve {len(self.results['suspicious_findings']) - 10} bulgu daha")
         
-        # Çıkarılan veriler
         if self.results['extracted_data']:
             print(f"\n{'─'*70}")
             print(f"✅ ÇIKARILAN VERİLER ({len(self.results['extracted_data'])}):")
             print(f"{'─'*70}")
-            for idx, data in enumerate(self.results['extracted_data'], 1):
-                print(f"\n  [{idx}] {data['type']}:")
-                print(f"      Uzunluk: {data['length']} bytes")
-                if isinstance(data['data'], str) and len(data['data']) <= 500:
-                    print(f"      İçerik: {data['data'][:500]}")
-                elif isinstance(data['data'], str):
-                    print(f"      İçerik (ilk 500 karakter): {data['data'][:500]}...")
-                else:
-                    print(f"      İçerik: {data['data']}")
+            for idx, data in enumerate(self.results['extracted_data'][:5], 1):
+                print(f"\n  [{idx}] {data['type']} ({data['length']} bytes)")
+                if isinstance(data['data'], str) and len(data['data']) <= 200:
+                    print(f"      {data['data'][:200]}")
         
-        # Özet
         print(f"\n{'='*70}")
-        if self.results['suspicious_findings'] or self.results['extracted_data']:
+        risk_score = self.results['ml_prediction'].get('score', 0) if self.results['ml_prediction'] else 0
+        if risk_score > 50 or self.results['suspicious_findings']:
             print("🚨 SONUÇ: Bu dosyada steganografi belirtileri tespit edildi!")
         else:
             print("✅ SONUÇ: Belirgin bir steganografi tespit edilemedi.")
         print(f"{'='*70}\n")
     
     def generate_html_report(self, output_path='report.html'):
-        """Detaylı HTML raporu oluştur"""
+        """Kapsamlı HTML raporu oluştur - Tüm analizleri içerir"""
         
-        # Görüntüyü base64'e çevir
         with open(self.filepath, 'rb') as f:
             image_data = base64.b64encode(f.read()).decode('utf-8')
         
-        # Analiz zamanı
         analysis_time = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
         
-        # Risk skoru hesapla (0-100)
-        risk_score = 0
-        if self.results['chi_square_test']:
-            if self.results['chi_square_test'] > 200:
-                risk_score += 40
-            elif self.results['chi_square_test'] > 100:
-                risk_score += 20
+        # Risk skoru hesapla
+        ml_score = self.results['ml_prediction'].get('score', 0) if self.results['ml_prediction'] else 0
+        risk_score = ml_score if ml_score > 0 else (
+            min(100, len(self.results['suspicious_findings']) * 10 + 
+                (self.results.get('chi_square_test', 0) / 10 if self.results.get('chi_square_test') else 0))
+        )
         
-        risk_score += len(self.results['suspicious_findings']) * 10
-        risk_score += len(self.results['extracted_data']) * 15
-        risk_score = min(100, risk_score)
-        
-        # Risk seviyesi ve rengi
         if risk_score >= 70:
             risk_level = "YÜKSEK RİSK"
             risk_color = "#ef4444"
@@ -481,84 +840,48 @@ class SteganalysisTool:
             risk_color = "#10b981"
             risk_bg = "#f0fdf4"
         
-        # LSB grafiği için veri hazırla
-        lsb_chart_data = []
-        for channel, stats in self.results['lsb_analysis'].items():
-            lsb_chart_data.append({
-                'channel': channel,
-                'ones': stats['ones'],
-                'zeros': stats['zeros'],
-                'ratio': stats['ratio']
-            })
-        
         html_content = f"""<!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Steganografi Analiz Raporu - {self.results['filename']}</title>
+    <title>Gelişmiş Steganografi Raporu - {self.results['filename']}</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;400;600;700&display=swap');
         
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         
         :root {{
-            --primary: #0f172a;
-            --secondary: #1e293b;
-            --accent: #3b82f6;
+            --bg-primary: #0a0e27;
+            --bg-secondary: #111827;
+            --bg-card: #1a1f3a;
+            --accent: #6366f1;
+            --accent-bright: #818cf8;
             --success: #10b981;
             --warning: #f59e0b;
             --danger: #ef4444;
-            --text: #f8fafc;
-            --text-secondary: #cbd5e1;
-            --border: #334155;
-            --card-bg: #1e293b;
-            --gradient-start: #0f172a;
-            --gradient-end: #1e293b;
+            --text: #f1f5f9;
+            --text-dim: #94a3b8;
+            --border: #2d3748;
         }}
         
         body {{
-            font-family: 'Space Grotesk', sans-serif;
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
             color: var(--text);
             line-height: 1.6;
             min-height: 100vh;
-            position: relative;
         }}
         
-        body::before {{
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
-                radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.08) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: 0;
-        }}
-        
-        .container {{
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 40px 20px;
-            position: relative;
-            z-index: 1;
-        }}
+        .container {{ max-width: 1400px; margin: 0 auto; padding: 40px 20px; }}
         
         .header {{
             text-align: center;
-            margin-bottom: 50px;
-            padding: 40px;
-            background: rgba(30, 41, 59, 0.6);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
+            padding: 50px 30px;
+            background: rgba(26, 31, 58, 0.8);
+            backdrop-filter: blur(15px);
+            border-radius: 25px;
+            margin-bottom: 40px;
             border: 1px solid var(--border);
             position: relative;
             overflow: hidden;
@@ -567,88 +890,46 @@ class SteganalysisTool:
         .header::before {{
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
+            top: 0; left: 0; right: 0;
             height: 4px;
-            background: linear-gradient(90deg, var(--accent), #8b5cf6, var(--accent));
+            background: linear-gradient(90deg, var(--accent), var(--accent-bright), var(--accent));
             background-size: 200% 100%;
             animation: shimmer 3s linear infinite;
         }}
         
-        @keyframes shimmer {{
-            0% {{ background-position: -200% 0; }}
-            100% {{ background-position: 200% 0; }}
-        }}
+        @keyframes shimmer {{ 0% {{ background-position: -200% 0; }} 100% {{ background-position: 200% 0; }} }}
         
         .header h1 {{
-            font-size: 3em;
+            font-size: 2.8em;
             font-weight: 700;
-            margin-bottom: 10px;
-            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }}
-        
-        .header .subtitle {{
-            font-size: 1.2em;
-            color: var(--text-secondary);
-            font-family: 'JetBrains Mono', monospace;
         }}
         
         .risk-banner {{
             background: {risk_bg};
             border: 2px solid {risk_color};
-            border-radius: 15px;
-            padding: 30px;
+            border-radius: 20px;
+            padding: 35px;
             margin: 30px 0;
             text-align: center;
-            position: relative;
-            overflow: hidden;
-        }}
-        
-        .risk-banner::before {{
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-            animation: scan 2s ease-in-out infinite;
-        }}
-        
-        @keyframes scan {{
-            0% {{ left: -100%; }}
-            100% {{ left: 100%; }}
         }}
         
         .risk-score {{
-            font-size: 4em;
+            font-size: 4.5em;
             font-weight: 700;
             color: {risk_color};
             font-family: 'JetBrains Mono', monospace;
         }}
         
-        .risk-level {{
-            font-size: 1.5em;
-            font-weight: 600;
-            color: {risk_color};
-            margin-top: 10px;
-        }}
-        
-        .grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 25px;
-            margin: 30px 0;
-        }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 25px; margin: 30px 0; }}
         
         .card {{
-            background: rgba(30, 41, 59, 0.8);
+            background: rgba(26, 31, 58, 0.9);
             backdrop-filter: blur(10px);
-            border-radius: 15px;
+            border-radius: 20px;
             padding: 30px;
             border: 1px solid var(--border);
             transition: all 0.3s ease;
@@ -656,62 +937,24 @@ class SteganalysisTool:
         
         .card:hover {{
             transform: translateY(-5px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 20px 60px rgba(99, 102, 241, 0.3);
             border-color: var(--accent);
         }}
         
         .card h2 {{
             font-size: 1.5em;
             margin-bottom: 20px;
+            color: var(--accent-bright);
             display: flex;
             align-items: center;
-            gap: 10px;
-            color: var(--text);
-        }}
-        
-        .card h2 .icon {{
-            font-size: 1.3em;
-        }}
-        
-        .info-item {{
-            display: flex;
-            justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--border);
-        }}
-        
-        .info-item:last-child {{
-            border-bottom: none;
-        }}
-        
-        .info-label {{
-            color: var(--text-secondary);
-            font-weight: 500;
-        }}
-        
-        .info-value {{
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 600;
-        }}
-        
-        .image-preview {{
-            width: 100%;
-            border-radius: 10px;
-            margin-top: 15px;
-            border: 2px solid var(--border);
-            transition: all 0.3s ease;
-        }}
-        
-        .image-preview:hover {{
-            transform: scale(1.02);
-            border-color: var(--accent);
+            gap: 12px;
         }}
         
         .chart-container {{
             margin: 20px 0;
             padding: 20px;
-            background: rgba(15, 23, 42, 0.5);
-            border-radius: 10px;
+            background: rgba(10, 14, 39, 0.5);
+            border-radius: 12px;
         }}
         
         .bar {{
@@ -721,304 +964,324 @@ class SteganalysisTool:
         }}
         
         .bar-label {{
-            width: 100px;
+            width: 120px;
             font-weight: 600;
             font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9em;
         }}
         
         .bar-container {{
             flex: 1;
-            height: 30px;
-            background: rgba(15, 23, 42, 0.8);
-            border-radius: 5px;
+            height: 32px;
+            background: rgba(10, 14, 39, 0.8);
+            border-radius: 6px;
             overflow: hidden;
             position: relative;
         }}
         
         .bar-fill {{
             height: 100%;
-            background: linear-gradient(90deg, var(--accent), #8b5cf6);
+            background: linear-gradient(90deg, var(--accent), var(--accent-bright));
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            padding: 0 10px;
+            padding: 0 12px;
             font-family: 'JetBrains Mono', monospace;
             font-weight: 700;
+            font-size: 0.85em;
+            transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }}
+        
+        .metric-box {{
+            background: rgba(10, 14, 39, 0.6);
+            padding: 20px;
+            border-radius: 12px;
+            margin: 15px 0;
+            border-left: 4px solid var(--accent);
+        }}
+        
+        .metric-value {{
+            font-size: 2em;
+            font-weight: 700;
+            color: var(--accent-bright);
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        
+        .metric-label {{
+            color: var(--text-dim);
             font-size: 0.9em;
-            transition: width 1s ease;
+            margin-top: 5px;
         }}
         
         .finding-item {{
-            background: rgba(15, 23, 42, 0.5);
+            background: rgba(10, 14, 39, 0.5);
             padding: 15px;
-            border-radius: 8px;
-            margin: 10px 0;
+            border-radius: 10px;
+            margin: 12px 0;
             border-left: 4px solid var(--warning);
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.95em;
+            font-size: 0.9em;
         }}
         
-        .finding-item.critical {{
-            border-left-color: var(--danger);
+        .finding-item.critical {{ border-left-color: var(--danger); }}
+        .finding-item.success {{ border-left-color: var(--success); }}
+        
+        .badge {{
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
         }}
         
-        .finding-item.success {{
-            border-left-color: var(--success);
-        }}
+        .badge-success {{ background: rgba(16, 185, 129, 0.2); color: var(--success); border: 1px solid var(--success); }}
+        .badge-warning {{ background: rgba(245, 158, 11, 0.2); color: var(--warning); border: 1px solid var(--warning); }}
+        .badge-danger {{ background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }}
+        
+        .info-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }}
+        .info-item {{ background: rgba(10, 14, 39, 0.5); padding: 15px; border-radius: 10px; }}
+        .info-item strong {{ display: block; color: var(--text-dim); font-size: 0.85em; margin-bottom: 5px; }}
+        .info-item span {{ font-family: 'JetBrains Mono', monospace; font-weight: 600; }}
+        
+        .image-preview {{ width: 100%; border-radius: 12px; margin-top: 15px; border: 2px solid var(--border); }}
         
         .data-extract {{
-            background: rgba(15, 23, 42, 0.8);
+            background: rgba(10, 14, 39, 0.8);
             padding: 20px;
-            border-radius: 10px;
+            border-radius: 12px;
             margin: 15px 0;
             border: 1px solid var(--border);
         }}
         
-        .data-extract h3 {{
-            color: var(--accent);
-            margin-bottom: 10px;
-            font-size: 1.1em;
-        }}
+        .data-extract h3 {{ color: var(--accent); margin-bottom: 10px; }}
         
         .data-extract pre {{
-            background: rgba(0, 0, 0, 0.5);
-            padding: 15px;
-            border-radius: 5px;
-            overflow-x: auto;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9em;
-            line-height: 1.5;
-            color: #94a3b8;
-        }}
-        
-        .metadata-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }}
-        
-        .metadata-item {{
-            background: rgba(15, 23, 42, 0.5);
+            background: rgba(0, 0, 0, 0.6);
             padding: 15px;
             border-radius: 8px;
-            border: 1px solid var(--border);
-        }}
-        
-        .metadata-item strong {{
-            display: block;
-            color: var(--text-secondary);
-            margin-bottom: 5px;
-            font-size: 0.9em;
-        }}
-        
-        .metadata-item span {{
+            overflow-x: auto;
             font-family: 'JetBrains Mono', monospace;
-            font-weight: 600;
+            font-size: 0.85em;
+            line-height: 1.6;
+            color: #94a3b8;
         }}
         
         .footer {{
             text-align: center;
             margin-top: 50px;
             padding: 30px;
-            background: rgba(30, 41, 59, 0.6);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            font-size: 0.9em;
-        }}
-        
-        .badge {{
-            display: inline-block;
-            padding: 5px 12px;
+            background: rgba(26, 31, 58, 0.6);
             border-radius: 20px;
-            font-size: 0.85em;
-            font-weight: 600;
-            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-dim);
         }}
         
-        .badge-success {{
-            background: rgba(16, 185, 129, 0.2);
-            color: var(--success);
-            border: 1px solid var(--success);
-        }}
-        
-        .badge-warning {{
-            background: rgba(245, 158, 11, 0.2);
-            color: var(--warning);
-            border: 1px solid var(--warning);
-        }}
-        
-        .badge-danger {{
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--danger);
-            border: 1px solid var(--danger);
-        }}
-        
-        @media print {{
-            body {{
-                background: white;
-                color: black;
-            }}
-            .card {{
-                break-inside: avoid;
-            }}
-        }}
+        @media print {{ body {{ background: white; color: black; }} }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔍 Steganografi Analiz Raporu</h1>
-            <div class="subtitle">Gelişmiş Steganaliz ve Gizli Veri Tespiti</div>
+            <h1>🔬 Gelişmiş Steganografi Analizi</h1>
+            <div style="color: var(--text-dim); font-size: 1.1em; font-family: 'JetBrains Mono', monospace;">
+                {', '.join(self.results['analysis_methods'])} Analysis
+            </div>
         </div>
         
         <div class="risk-banner">
-            <div class="risk-score">{risk_score}</div>
-            <div class="risk-level">{risk_level}</div>
+            <div class="risk-score">{risk_score:.0f}</div>
+            <div style="font-size: 1.8em; font-weight: 600; color: {risk_color}; margin-top: 10px;">{risk_level}</div>
             <p style="margin-top: 15px; color: {risk_color}; font-weight: 600;">
-                {'Bu dosyada steganografi belirtileri tespit edildi!' if risk_score >= 40 else 'Dosya temiz görünüyor.'}
+                {'Steganografi belirtileri tespit edildi!' if risk_score >= 40 else 'Dosya temiz görünüyor.'}
             </p>
         </div>
         
         <div class="grid">
             <div class="card">
-                <h2><span class="icon">📄</span> Dosya Bilgileri</h2>
-                <div class="info-item">
-                    <span class="info-label">Dosya Adı</span>
-                    <span class="info-value">{self.results['filename']}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Dosya Türü</span>
-                    <span class="info-value">{self.results['file_type']}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Boyut</span>
-                    <span class="info-value">{self.results['file_size']:,} bytes</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Boyutlar</span>
-                    <span class="info-value">{self.results['metadata'].get('Size', 'N/A')}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Format</span>
-                    <span class="info-value">{self.results['metadata'].get('Format', 'N/A')}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Mod</span>
-                    <span class="info-value">{self.results['metadata'].get('Mode', 'N/A')}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Analiz Zamanı</span>
-                    <span class="info-value">{analysis_time}</span>
+                <h2>📄 Dosya Bilgileri</h2>
+                <div class="info-grid">
+                    <div class="info-item"><strong>Dosya</strong><span>{self.results['filename']}</span></div>
+                    <div class="info-item"><strong>Tip</strong><span>{self.results['file_type']}</span></div>
+                    <div class="info-item"><strong>Boyut</strong><span>{self.results['file_size']:,} B</span></div>
+                    <div class="info-item"><strong>Boyutlar</strong><span>{self.results['metadata'].get('Size', 'N/A')}</span></div>
+                    <div class="info-item"><strong>Analiz</strong><span>{analysis_time}</span></div>
                 </div>
             </div>
             
             <div class="card">
-                <h2><span class="icon">🖼️</span> Görüntü Önizleme</h2>
-                <img src="data:image/png;base64,{image_data}" alt="Analiz edilen görüntü" class="image-preview">
+                <h2>🖼️ Görüntü</h2>
+                <img src="data:image/png;base64,{image_data}" alt="Analyzed image" class="image-preview">
             </div>
         </div>
-        
-        <div class="card">
-            <h2><span class="icon">📊</span> LSB (Least Significant Bit) Analizi</h2>
-            <div class="chart-container">
 """
         
-        # LSB grafikleri
-        for channel_data in lsb_chart_data:
-            ratio_percent = channel_data['ratio'] * 100
+        # ML Prediction
+        if self.results['ml_prediction'] and 'score' in self.results['ml_prediction']:
+            ml = self.results['ml_prediction']
             html_content += f"""
+        <div class="card">
+            <h2>🤖 Machine Learning Tespiti</h2>
+            <div class="metric-box" style="border-left-color: {risk_color};">
+                <div class="metric-value" style="color: {risk_color};">{ml['score']:.1f}/100</div>
+                <div class="metric-label">Steganografi Skoru</div>
+            </div>
+            <div class="info-grid" style="margin-top: 20px;">
+                <div class="info-item"><strong>Tahmin</strong><span>{ml['prediction']}</span></div>
+                <div class="info-item"><strong>Güven</strong><span>{ml['confidence']}</span></div>
+                <div class="info-item"><strong>Risk</strong><span>{ml['risk_level']}</span></div>
+                <div class="info-item"><strong>Özellik</strong><span>{ml['features_used']} features</span></div>
+            </div>
+        </div>
+"""
+        
+        # LSB Analysis
+        if self.results['lsb_analysis']:
+            html_content += """
+        <div class="card">
+            <h2>📊 LSB Analizi</h2>
+            <div class="chart-container">
+"""
+            for channel, stats in self.results['lsb_analysis'].items():
+                ratio_percent = stats['ratio'] * 100
+                html_content += f"""
                 <div class="bar">
-                    <div class="bar-label">{channel_data['channel']}</div>
+                    <div class="bar-label">{channel}</div>
                     <div class="bar-container">
                         <div class="bar-fill" style="width: {ratio_percent}%">{ratio_percent:.1f}%</div>
                     </div>
                 </div>
 """
-        
-        html_content += """
+            
+            if self.results.get('chi_square_test'):
+                chi = self.results['chi_square_test']
+                chi_badge = 'badge-danger' if chi > 200 else ('badge-warning' if chi > 100 else 'badge-success')
+                html_content += f"""
             </div>
-            <p style="color: var(--text-secondary); margin-top: 15px;">
-                <strong>Not:</strong> Normal bir görüntüde 1'lerin oranı ~%50 olmalıdır. 
-                %45-55 aralığının dışındaki değerler şüpheli olabilir.
-            </p>
+            <div class="metric-box" style="margin-top: 20px;">
+                <div class="metric-value">{chi:.1f}</div>
+                <div class="metric-label">Chi-Square Test <span class="badge {chi_badge}">
+                    {'YÜKSEK' if chi > 200 else ('ORTA' if chi > 100 else 'DÜŞÜK')}
+                </span></div>
+            </div>
+"""
+            html_content += """
         </div>
-        
 """
         
-        # Chi-Square testi
-        if self.results['chi_square_test'] is not None:
-            chi_value = self.results['chi_square_test']
-            if chi_value > 200:
-                chi_badge = '<span class="badge badge-danger">YÜKSEK RİSK</span>'
-                chi_desc = "Steganografi olasılığı çok yüksek!"
-            elif chi_value > 100:
-                chi_badge = '<span class="badge badge-warning">ORTA RİSK</span>'
-                chi_desc = "Steganografi olabilir, detaylı inceleme önerilir."
-            else:
-                chi_badge = '<span class="badge badge-success">DÜŞÜK RİSK</span>'
-                chi_desc = "Normal dağılım görünüyor."
-            
+        # Entropy Analysis
+        if self.results['entropy_analysis']:
+            html_content += """
+        <div class="card">
+            <h2>🌡️ Entropi Analizi</h2>
+"""
+            for channel, stats in self.results['entropy_analysis'].items():
+                if 'error' not in stats:
+                    html_content += f"""
+            <div class="metric-box">
+                <div style="font-weight: 600; color: var(--accent); margin-bottom: 10px;">{channel}</div>
+                <div class="info-grid">
+                    <div class="info-item"><strong>Shannon</strong><span>{stats['shannon_entropy']:.3f}</span></div>
+                    <div class="info-item"><strong>LSB</strong><span>{stats['lsb_entropy']:.3f}</span></div>
+                    <div class="info-item"><strong>Mean Block</strong><span>{stats['mean_block_entropy']:.3f}</span></div>
+                    <div class="info-item"><strong>Std Block</strong><span>{stats['std_block_entropy']:.3f}</span></div>
+                </div>
+            </div>
+"""
+            html_content += """
+        </div>
+"""
+        
+        # RS Analysis
+        if self.results['rs_analysis'] and 'error' not in self.results['rs_analysis']:
+            rs = self.results['rs_analysis']
             html_content += f"""
         <div class="card">
-            <h2><span class="icon">📈</span> Chi-Square İstatistiksel Test</h2>
-            <div style="text-align: center; padding: 20px;">
-                <div style="font-size: 3em; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--accent);">
-                    {chi_value:.2f}
-                </div>
-                <div style="margin: 15px 0;">
-                    {chi_badge}
-                </div>
-                <p style="color: var(--text-secondary);">{chi_desc}</p>
+            <h2>🔬 RS Analizi</h2>
+            <div class="info-grid">
+                <div class="info-item"><strong>R Original</strong><span>{rs['R_original']}</span></div>
+                <div class="info-item"><strong>S Original</strong><span>{rs['S_original']}</span></div>
+                <div class="info-item"><strong>R Flipped</strong><span>{rs['R_flipped']}</span></div>
+                <div class="info-item"><strong>S Flipped</strong><span>{rs['S_flipped']}</span></div>
             </div>
-            <div style="background: rgba(15, 23, 42, 0.5); padding: 15px; border-radius: 8px; margin-top: 20px;">
-                <strong>Chi-Square Değerlendirme Ölçeği:</strong>
-                <ul style="margin-top: 10px; color: var(--text-secondary); line-height: 2;">
-                    <li>&lt; 100: Düşük risk (Normal)</li>
-                    <li>100-200: Orta risk (İncelenmeli)</li>
-                    <li>&gt; 200: Yüksek risk (Muhtemelen steganografi)</li>
-                </ul>
+            <div class="chart-container" style="margin-top: 20px;">
+                <div class="bar">
+                    <div class="bar-label">R Ratio</div>
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: {rs['R_ratio']*100}%">{rs['R_ratio']:.3f}</div>
+                    </div>
+                </div>
+                <div class="bar">
+                    <div class="bar-label">S Ratio</div>
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: {rs['S_ratio']*100}%">{rs['S_ratio']:.3f}</div>
+                    </div>
+                </div>
             </div>
         </div>
 """
         
-        # Şüpheli bulgular
+        # Sample Pair Analysis
+        if self.results['sample_pair_analysis'] and 'error' not in self.results['sample_pair_analysis']:
+            sp = self.results['sample_pair_analysis']
+            html_content += f"""
+        <div class="card">
+            <h2>👥 Sample Pair Analizi</h2>
+            <div class="info-grid">
+                <div class="info-item"><strong>X Pairs</strong><span>{sp['X_pairs']}</span></div>
+                <div class="info-item"><strong>Y Pairs</strong><span>{sp['Y_pairs']}</span></div>
+                <div class="info-item"><strong>Z Pairs</strong><span>{sp['Z_pairs']}</span></div>
+                <div class="info-item"><strong>Deviation</strong><span>{sp['deviation_score']:.3f}</span></div>
+            </div>
+        </div>
+"""
+        
+        # Histogram Analysis
+        if self.results['histogram_analysis']:
+            html_content += """
+        <div class="card">
+            <h2>📊 Histogram Analizi</h2>
+"""
+            for channel, stats in self.results['histogram_analysis'].items():
+                html_content += f"""
+            <div class="metric-box">
+                <div style="font-weight: 600; color: var(--accent); margin-bottom: 10px;">{channel}</div>
+                <div class="info-grid">
+                    <div class="info-item"><strong>Empty Bins</strong><span>{stats['empty_bins']}</span></div>
+                    <div class="info-item"><strong>Smoothness</strong><span>{stats['smoothness']:.1f}</span></div>
+                    <div class="info-item"><strong>Spikes</strong><span>{stats['spikes']}</span></div>
+                    <div class="info-item"><strong>Std</strong><span>{stats['std_frequency']:.1f}</span></div>
+                </div>
+            </div>
+"""
+            html_content += """
+        </div>
+"""
+        
+        # Suspicious Findings
         if self.results['suspicious_findings']:
             html_content += f"""
         <div class="card">
-            <h2><span class="icon">⚠️</span> Şüpheli Bulgular ({len(self.results['suspicious_findings'])})</h2>
+            <h2>⚠️ Şüpheli Bulgular ({len(self.results['suspicious_findings'])})</h2>
 """
-            for finding in self.results['suspicious_findings']:
-                # Bulgu tipine göre class belirle
-                if '✅' in finding:
-                    finding_class = 'success'
-                elif 'YÜKSEK' in finding or 'tespit edildi' in finding:
-                    finding_class = 'critical'
-                else:
-                    finding_class = ''
-                    
+            for finding in self.results['suspicious_findings'][:20]:
+                finding_class = 'success' if '✅' in finding else ('critical' if '🤖' in finding or 'YÜKSEK' in finding else '')
                 html_content += f'            <div class="finding-item {finding_class}">{finding}</div>\n'
+            
+            if len(self.results['suspicious_findings']) > 20:
+                html_content += f'            <p style="color: var(--text-dim); margin-top: 15px; text-align: center;">...ve {len(self.results["suspicious_findings"]) - 20} bulgu daha</p>\n'
             
             html_content += """
         </div>
 """
         
-        # Çıkarılan veriler
+        # Extracted Data
         if self.results['extracted_data']:
             html_content += f"""
         <div class="card">
-            <h2><span class="icon">✅</span> Çıkarılan Veriler ({len(self.results['extracted_data'])})</h2>
+            <h2>✅ Çıkarılan Veriler ({len(self.results['extracted_data'])})</h2>
 """
-            for idx, data in enumerate(self.results['extracted_data'], 1):
-                data_content = data['data']
-                if isinstance(data_content, str):
-                    # HTML escape
-                    data_content = data_content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                    if len(data_content) > 1000:
-                        data_content = data_content[:1000] + '...\n\n[Kalan içerik kesiliyor...]'
-                
+            for idx, data in enumerate(self.results['extracted_data'][:10], 1):
+                data_content = str(data['data'])[:1000]
                 html_content += f"""
             <div class="data-extract">
                 <h3>[{idx}] {data['type']}</h3>
@@ -1026,63 +1289,33 @@ class SteganalysisTool:
                 <pre>{data_content}</pre>
             </div>
 """
-            
             html_content += """
         </div>
 """
         
-        # Metadata
-        html_content += """
-        <div class="card">
-            <h2><span class="icon">📝</span> Metadata Bilgileri</h2>
-            <div class="metadata-grid">
-"""
-        
-        for key, value in self.results['metadata'].items():
-            if key not in ['Size', 'Format', 'Mode', 'PNG_Chunks']:  # Zaten gösterildi
-                html_content += f"""
-                <div class="metadata-item">
-                    <strong>{key}</strong>
-                    <span>{str(value)[:100]}</span>
-                </div>
-"""
-        
-        html_content += """
-            </div>
-        </div>
-        
+        html_content += f"""
         <div class="footer">
-            <p><strong>Steganografi Analiz Aracı</strong></p>
-            <p>Bu rapor otomatik olarak oluşturulmuştur • """ + analysis_time + """</p>
-            <p style="margin-top: 10px; font-size: 0.85em;">
-                ⚠️ Yasal Uyarı: Bu araç yalnızca eğitim ve güvenlik araştırması amaçlı kullanılmalıdır.
+            <p><strong>Gelişmiş Steganografi Analiz Aracı</strong></p>
+            <p>{analysis_time} • Analiz Yöntemleri: {', '.join(self.results['analysis_methods'])}</p>
+            <p style="margin-top: 15px; font-size: 0.85em;">
+                ⚠️ Bu araç eğitim ve güvenlik araştırması amaçlıdır
             </p>
         </div>
     </div>
     
     <script>
-        // Sayfa yüklendiğinde animasyonları başlat
-        window.addEventListener('load', function() {
-            // Bar animasyonları
+        window.addEventListener('load', function() {{
             const bars = document.querySelectorAll('.bar-fill');
-            bars.forEach(bar => {
+            bars.forEach(bar => {{
                 const width = bar.style.width;
                 bar.style.width = '0%';
-                setTimeout(() => {
-                    bar.style.width = width;
-                }, 100);
-            });
-        });
-        
-        // Yazdırma fonksiyonu
-        function printReport() {
-            window.print();
-        }
+                setTimeout(() => {{ bar.style.width = width; }}, 100);
+            }});
+        }});
     </script>
 </body>
 </html>"""
         
-        # HTML dosyasını kaydet
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
@@ -1090,46 +1323,208 @@ class SteganalysisTool:
         return output_path
 
 
+def interactive_menu():
+    """İnteraktif menü göster"""
+    print("\n" + "="*70)
+    print("🔍 GELİŞMİŞ STEGANOGRAFİ ANALİZ ARACI")
+    print("="*70 + "\n")
+    
+    print("Lütfen analiz yöntemini seçin:\n")
+    print("  1️⃣  LSB (Least Significant Bit) Analizi")
+    print("  2️⃣  DCT (Discrete Cosine Transform) Analizi - JPEG için")
+    print("  3️⃣  Histogram Analizi")
+    print("  4️⃣  RS (Regular-Singular) Analizi")
+    print("  5️⃣  Sample Pair Analizi")
+    print("  6️⃣  Entropi Analizi")
+    print("  7️⃣  Machine Learning Tabanlı Tespit")
+    print("  8️⃣  TÜM ANALİZLER (Önerilen)")
+    print("  9️⃣  Batch Analiz (Çoklu dosya)")
+    print("  0️⃣  Çıkış")
+    
+    choice = input("\n👉 Seçiminiz (1-9): ").strip()
+    return choice
+
+
+def batch_analysis(pattern, methods):
+    """Batch analiz - çoklu dosya"""
+    print(f"\n{'='*70}")
+    print(f"📦 BATCH ANALİZ - Pattern: {pattern}")
+    print(f"{'='*70}\n")
+    
+    files = glob.glob(pattern)
+    
+    if not files:
+        print(f"❌ Pattern ile eşleşen dosya bulunamadı: {pattern}")
+        return
+    
+    print(f"✅ {len(files)} dosya bulundu\n")
+    
+    results_summary = []
+    
+    for idx, filepath in enumerate(files, 1):
+        print(f"\n[{idx}/{len(files)}] Analiz ediliyor: {os.path.basename(filepath)}")
+        print("-" * 70)
+        
+        try:
+            tool = AdvancedSteganalysisTool(filepath, methods)
+            result = tool.analyze()
+            
+            # Özet bilgi
+            ml_score = result['ml_prediction'].get('score', 0) if result['ml_prediction'] else 0
+            findings_count = len(result['suspicious_findings'])
+            
+            results_summary.append({
+                'file': os.path.basename(filepath),
+                'ml_score': ml_score,
+                'findings': findings_count,
+                'status': '🚨 ŞÜPHELİ' if ml_score > 50 or findings_count > 3 else '✅ TEMİZ'
+            })
+            
+            # HTML raporu
+            report_name = f"batch_report_{Path(filepath).stem}.html"
+            tool.generate_html_report(report_name)
+            
+        except Exception as e:
+            print(f"❌ Hata: {e}")
+            results_summary.append({
+                'file': os.path.basename(filepath),
+                'ml_score': 0,
+                'findings': 0,
+                'status': '❌ HATA'
+            })
+    
+    # Özet rapor
+    print(f"\n\n{'='*70}")
+    print("📊 BATCH ANALİZ ÖZETİ")
+    print(f"{'='*70}\n")
+    
+    print(f"{'Dosya':<30} {'ML Skor':<10} {'Bulgular':<10} {'Durum'}")
+    print("-" * 70)
+    
+    for result in results_summary:
+        print(f"{result['file']:<30} {result['ml_score']:>7.1f}   {result['findings']:>7}   {result['status']}")
+    
+    # İstatistikler
+    suspicious_count = sum(1 for r in results_summary if '🚨' in r['status'])
+    print(f"\n📈 İstatistikler:")
+    print(f"   Toplam dosya: {len(files)}")
+    print(f"   Şüpheli: {suspicious_count}")
+    print(f"   Temiz: {len(files) - suspicious_count}")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description='PNG ve BMP dosyalarında steganografi analizi',
+        description='Gelişmiş Steganografi Analiz Aracı',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Örnekler:
+  # İnteraktif mod
+  %(prog)s
+  
+  # Tek dosya - tüm analizler
   %(prog)s image.png
-  %(prog)s photo.bmp
-  %(prog)s suspicious_image.png
+  
+  # Belirli analizler
+  %(prog)s image.png --methods lsb histogram entropy
+  
+  # Batch analiz
+  %(prog)s --batch "*.png" --methods all
+  
+  # HTML raporu
   %(prog)s image.png --html report.html
         """
     )
-    parser.add_argument('filepath', help='Analiz edilecek görüntü dosyası')
-    parser.add_argument('--html', '--report', metavar='OUTPUT', 
-                       help='HTML raporu oluştur (örn: --html report.html)')
+    
+    parser.add_argument('filepath', nargs='?', help='Analiz edilecek görüntü dosyası')
+    parser.add_argument('--methods', '-m', nargs='+', 
+                       choices=['lsb', 'dct', 'histogram', 'rs', 'sample_pair', 'entropy', 'ml', 'all'],
+                       default=['all'],
+                       help='Analiz yöntemleri')
+    parser.add_argument('--batch', '-b', metavar='PATTERN',
+                       help='Batch analiz için dosya pattern (örn: "*.png")')
+    parser.add_argument('--html', '--report', metavar='OUTPUT',
+                       help='HTML raporu oluştur')
+    parser.add_argument('--interactive', '-i', action='store_true',
+                       help='İnteraktif menü modu')
     
     args = parser.parse_args()
     
-    if not os.path.exists(args.filepath):
-        print(f"❌ Hata: '{args.filepath}' dosyası bulunamadı!")
-        sys.exit(1)
-    
-    try:
-        tool = SteganalysisTool(args.filepath)
-        tool.analyze()
-        
-        # HTML raporu oluştur
-        if args.html:
-            html_path = args.html
-            tool.generate_html_report(html_path)
-            print(f"\n📊 HTML raporu görüntülemek için: {html_path}")
+    # İnteraktif mod veya argüman yoksa
+    if args.interactive or (not args.filepath and not args.batch):
+        while True:
+            choice = interactive_menu()
             
-    except SteganalysisToolError as e:
-        print(f"❌ Hata: {e}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"❌ Beklenmeyen hata: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+            if choice == '0':
+                print("\n👋 Çıkılıyor...\n")
+                sys.exit(0)
+            
+            if choice == '9':
+                pattern = input("\n📁 Dosya pattern (örn: *.png): ").strip()
+                method_choice = input("Analiz yöntemi (1-8, 8=tümü): ").strip()
+                
+                method_map = {
+                    '1': ['lsb'], '2': ['dct'], '3': ['histogram'],
+                    '4': ['rs'], '5': ['sample_pair'], '6': ['entropy'],
+                    '7': ['ml'], '8': ['all']
+                }
+                
+                methods = method_map.get(method_choice, ['all'])
+                batch_analysis(pattern, methods)
+                
+                input("\n✅ Devam etmek için Enter'a basın...")
+                continue
+            
+            filepath = input("\n📁 Dosya yolu: ").strip()
+            
+            if not os.path.exists(filepath):
+                print(f"\n❌ Dosya bulunamadı: {filepath}")
+                input("Devam etmek için Enter'a basın...")
+                continue
+            
+            method_map = {
+                '1': ['lsb'], '2': ['dct'], '3': ['histogram'],
+                '4': ['rs'], '5': ['sample_pair'], '6': ['entropy'],
+                '7': ['ml'], '8': ['all']
+            }
+            
+            methods = method_map.get(choice, ['all'])
+            
+            try:
+                tool = AdvancedSteganalysisTool(filepath, methods)
+                tool.analyze()
+                
+                html_choice = input("\n📊 HTML raporu oluşturulsun mu? (e/h): ").strip().lower()
+                if html_choice == 'e':
+                    html_name = f"report_{Path(filepath).stem}.html"
+                    tool.generate_html_report(html_name)
+                    print(f"\n✅ HTML raporu: {html_name}")
+                
+            except Exception as e:
+                print(f"\n❌ Hata: {e}")
+            
+            input("\n✅ Devam etmek için Enter'a basın...")
+    
+    # Batch mod
+    elif args.batch:
+        batch_analysis(args.batch, args.methods)
+    
+    # Normal mod
+    elif args.filepath:
+        if not os.path.exists(args.filepath):
+            print(f"❌ Hata: '{args.filepath}' dosyası bulunamadı!")
+            sys.exit(1)
+        
+        try:
+            tool = AdvancedSteganalysisTool(args.filepath, args.methods)
+            tool.analyze()
+            
+            if args.html:
+                tool.generate_html_report(args.html)
+                print(f"\n📊 HTML raporu: {args.html}")
+                
+        except Exception as e:
+            print(f"❌ Hata: {e}")
+            sys.exit(1)
 
 
 if __name__ == '__main__':
