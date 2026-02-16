@@ -6,4 +6,16 @@ python steganalysis.py image.png
 
 #Rapor oluşturma
 
-python steganalysis_tool.py image.png --html report.html
+python steganalysis.py image.png --methods all --html report.html
+
+#Kullanım modu
+
+python steganalysis.py --interactive
+
+#Tüm analizler
+
+python steganalysis.py image.png
+
+#Temel kullanım örneği
+
+python steganalysis.py image.png --methods lsb --html report.html
